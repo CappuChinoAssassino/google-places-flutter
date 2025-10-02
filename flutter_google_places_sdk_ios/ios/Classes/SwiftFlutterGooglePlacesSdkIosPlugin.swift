@@ -11,7 +11,7 @@ public class SwiftFlutterGooglePlacesSdkIosPlugin: NSObject, FlutterPlugin {
     let METHOD_FETCH_PLACE = "fetchPlace"
     let METHOD_FETCH_PLACE_PHOTO = "fetchPlacePhoto"
     
-    private var placesClient: GMSPlacesClient!
+    private var placesClient: PlacesClient!
     private var lastSessionToken: GMSAutocompleteSessionToken?
     
     private var photosCache: Dictionary<String, GMSPlacePhotoMetadata> = [:]
@@ -55,22 +55,36 @@ public class SwiftFlutterGooglePlacesSdkIosPlugin: NSObject, FlutterPlugin {
             filter.locationBias = locationBias
             filter.locationRestriction = locationRestriction
 
-            placesClient.findAutocompletePredictions(
-                fromQuery: query, filter: filter, sessionToken: sessionToken,
-                callback: { (results, error) in
-                    if let error = error {
-                        print("findAutoCompletePredictions error: \(error)")
-                        result(FlutterError(
-                            code: "API_ERROR",
-                            message: error.localizedDescription,
-                            details: nil
-                        ))
-                    } else {
-                        self.lastSessionToken = sessionToken
-                        let mappedResult = self.responseToList(results: results)
+            Task {
+                do {
+                    let request = AutocompleteRequest(query: query)
+                    let predictions = try await PlacesClient.shared.fetchAutocompletePredictions(request: request)
+                    let mappedResult = self.responseToList(results: predictions)
+                    DispatchQueue.main.async {
                         result(mappedResult)
                     }
-                })
+                } catch {
+                    DispatchQueue.main.async {
+                        result(FlutterError(code: "PLACES_ERROR", message: "Failed to fetch predictions.", details: error.localizedDescription))
+                    }
+                }
+            }
+            // placesClient.findAutocompletePredictions(
+            //     fromQuery: query, filter: filter, sessionToken: sessionToken,
+            //     callback: { (results, error) in
+            //         if let error = error {
+            //             print("findAutoCompletePredictions error: \(error)")
+            //             result(FlutterError(
+            //                 code: "API_ERROR",
+            //                 message: error.localizedDescription,
+            //                 details: nil
+            //             ))
+            //         } else {
+            //             self.lastSessionToken = sessionToken
+            //             let mappedResult = self.responseToList(results: results)
+            //             result(mappedResult)
+            //         }
+            //     })
         case METHOD_FETCH_PLACE:
             let args = call.arguments as! Dictionary<String,Any>
             let placeId = args["placeId"] as! String
@@ -346,7 +360,7 @@ public class SwiftFlutterGooglePlacesSdkIosPlugin: NSObject, FlutterPlugin {
     }
     
     private func initialize(apiKey: String?) {
-        GMSPlacesClient.provideAPIKey(apiKey ?? "")
-        placesClient = GMSPlacesClient.shared()
+        let _ = PlacesClient.provideAPIKey(apiKey)
+        placesClient = PlacesClient.shared
     }
 }
